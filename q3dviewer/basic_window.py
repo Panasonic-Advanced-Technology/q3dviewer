@@ -13,6 +13,24 @@ import signal
 import sys
 from PyQt5.QtWidgets import QLabel, QLineEdit, QDoubleSpinBox, QSpinBox
 
+from math import cos, radians, sin
+
+from pyqtgraph import Vector
+
+def rotation_matrix_from_elev_azim(elev, azim):
+    Ry = np.array([
+        [ np.cos(elev),  0, np.sin(elev)],
+        [ 0, 1,  0],
+        [ -np.sin(elev),0,  np.cos(elev)]
+    ])
+    Rz = np.array([
+        [np.cos(azim), -np.sin(azim), 0],
+        [np.sin(azim), np.cos(azim), 0],
+        [0, 0, 1]
+    ])
+    rotation_matrix = Rz @ Ry 
+    return rotation_matrix
+
 
 class SettingWindow(QWidget):
     def __init__(self):
@@ -61,6 +79,7 @@ class ViewWidget(gl.GLViewWidget):
         self.named_items = {}
         self.color = '#000000'
         self.followable_item_name = ['none']
+        self.active_keys = set()
         self.setting_window = SettingWindow()
         super(ViewWidget, self).__init__()
 
@@ -71,6 +90,8 @@ class ViewWidget(gl.GLViewWidget):
         if self.followed_name != 'none':
             pos = self.named_items[self.followed_name].T[:3, 3]
             self.opts['center'] = QVector3D(pos[0], pos[1], pos[2])
+        
+        self.updateMovement()
         super().update()
 
     def addSetting(self, layout):
@@ -127,59 +148,93 @@ class ViewWidget(gl.GLViewWidget):
             self.pan(diff.x(), diff.y(), 0, relative=camera_mode)
 
     def keyPressEvent(self, ev: QKeyEvent):
-        step = 10
-        zoom_delta = 20
-        speed = 2
-        self.projectionMatrix().data()
-
-        pitch_abs = np.abs(self.opts['elevation'])
-        camera_mode = 'view-upright'
-        if(pitch_abs <= 45.0 or pitch_abs == 90):
-            camera_mode = 'view'
-
         if ev.key() == QtCore.Qt.Key_M:  # setting meun
             print("Open setting windows")
             self.openSettingWindow()
-        elif ev.key() == QtCore.Qt.Key_R:
+        if ev.key() == QtCore.Qt.Key_R:
             print("Clear viewer")
             for item in self.named_items.values():
                 try:
                     item.clear()
                 except:
                     pass
-        elif ev.key() == QtCore.Qt.Key_Up:
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.pan(0, +step, 0, relative=camera_mode)
-            else:
-                self.orbit(azim=0, elev=-speed)
-        elif ev.key() == QtCore.Qt.Key_Down:
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.pan(0, -step, 0, relative=camera_mode)
-            else:
-                self.orbit(azim=0, elev=speed)
-        elif ev.key() == QtCore.Qt.Key_Left:
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.pan(+step, 0, 0, relative=camera_mode)
-            else:
-                self.orbit(azim=speed, elev=0)
-
-        elif ev.key() == QtCore.Qt.Key_Right:
-            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.pan(-step, 0, 0, relative=camera_mode)
-            else:
-                self.orbit(azim=-speed, elev=0)
-
-        elif ev.key() == QtCore.Qt.Key_Z:
-            self.opts['distance'] *= 0.999**(+zoom_delta)
-        elif ev.key() == QtCore.Qt.Key_X:
-            self.opts['distance'] *= 0.999**(-zoom_delta)
+        if ev.key() == QtCore.Qt.Key_Up or  \
+            ev.key() == QtCore.Qt.Key_Down or \
+            ev.key() == QtCore.Qt.Key_Left or \
+            ev.key() == QtCore.Qt.Key_Right or \
+            ev.key() == QtCore.Qt.Key_Z or \
+            ev.key() == QtCore.Qt.Key_X or \
+            ev.key() == QtCore.Qt.Key_A or \
+            ev.key() == QtCore.Qt.Key_D or \
+            ev.key() == QtCore.Qt.Key_W or \
+            ev.key() == QtCore.Qt.Key_S:
+            self.active_keys.add(ev.key())
         else:
             super().keyPressEvent(ev)
+        self.active_keys.add(ev.key())
+
+    def keyReleaseEvent(self, ev: QKeyEvent):
+        self.active_keys.discard(ev.key())
+
+    def updateMovement(self):
+        if self.active_keys == {}:
+            return
+        rotation_speed = 0.5
+        translation_speed = 0.2
+        if QtCore.Qt.Key_Up in self.active_keys:
+            self.opts['elevation'] += rotation_speed
+        if QtCore.Qt.Key_Down in self.active_keys:
+            self.opts['elevation'] -= rotation_speed
+        if QtCore.Qt.Key_Left in self.active_keys:
+            self.opts['azimuth'] += rotation_speed
+        if QtCore.Qt.Key_Right in self.active_keys:
+            self.opts['azimuth'] -= rotation_speed
+        if QtCore.Qt.Key_Z in self.active_keys:
+            elev = radians(self.opts['elevation'])
+            azim = radians(self.opts['azimuth'])
+            R = rotation_matrix_from_elev_azim(-elev, azim)
+            p = R @ np.array([translation_speed, 0, 0])
+            pos = Vector(p[0], p[1], p[2])
+            self.opts['center'] -= pos
+        if QtCore.Qt.Key_X in self.active_keys:
+            elev = radians(self.opts['elevation'])
+            azim = radians(self.opts['azimuth'])
+            R = rotation_matrix_from_elev_azim(-elev, azim)
+            p = R @ np.array([translation_speed, 0, 0])
+            pos = Vector(p[0], p[1], p[2])
+            self.opts['center'] += pos
+        if QtCore.Qt.Key_A in self.active_keys:
+            azim = radians(self.opts['azimuth'] + 90)
+            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
+            self.opts['center'] -= pos
+        if QtCore.Qt.Key_D in self.active_keys:
+            azim = radians(self.opts['azimuth'] + 90)
+            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
+            self.opts['center'] += pos
+        if QtCore.Qt.Key_W in self.active_keys:
+            azim = radians(self.opts['azimuth'])
+            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
+            self.opts['center'] -= pos
+        if QtCore.Qt.Key_S in self.active_keys:
+            azim = radians(self.opts['azimuth'])
+            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
+            self.opts['center'] += pos
+
+    def wheelEvent(self, ev):
+        delta = ev.angleDelta().x()
+        if delta == 0:
+            delta = ev.angleDelta().y()
+        elev = radians(self.opts['elevation'])
+        azim = radians(self.opts['azimuth'])
+        R = rotation_matrix_from_elev_azim(-elev, azim)
+        p = R @ np.array([delta *0.1, 0, 0])
+        pos = Vector(p[0], p[1], p[2])
+        self.opts['center'] -= pos
+        self.update()
 
     def openSettingWindow(self):
         if self.setting_window.isVisible():
             self.setting_window.raise_()
-
         else:
             self.setting_window.show()
 

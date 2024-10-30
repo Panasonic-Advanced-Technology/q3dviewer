@@ -55,7 +55,7 @@ def main():
     args = parser.parse_args()
     app = QApplication([])
     viewer = CloudViewer()
-    cloud_item = CloudIOItem(size=1, alpha=0.1)
+    cloud_item = CloudIOItem(size=0.01, alpha=0.1)
     axis_item = GLAxisItem(size=0.5, width=5)
     gird_item = GridItem(size=1000, spacing=20)
     # viewer.viewerWidget.setBackgroundColor(255, 255, 255, 255)

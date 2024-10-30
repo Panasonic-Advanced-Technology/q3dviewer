@@ -73,8 +73,8 @@ def main():
     global viewer
     global point_num_per_scan
     point_num_per_scan = 10000
-    map_item = CloudIOItem(size=1, alpha=0.1, color_mode='RGB')
-    scan_item = CloudItem(size=2, alpha=1, color_mode='#FFFFFF')
+    map_item = CloudIOItem(size=0.01, alpha=0.1, color_mode='RGB')
+    scan_item = CloudItem(size=0.01, alpha=1, color_mode='#FFFFFF')
     odom_item = GLAxisItem(size=0.5, width=5)
     gird_item = GridItem(size=1000, spacing=20)
     img_item = ImageItem(pos=np.array([0, 0]), size=np.array([800, 600]))

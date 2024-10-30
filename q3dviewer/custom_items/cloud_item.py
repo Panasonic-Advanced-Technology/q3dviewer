@@ -24,6 +24,7 @@ uniform float alpha;
 uniform int color_mode;
 uniform float vmin = 0;
 uniform float vmax = 255;
+uniform float point_size_world = 0.01;  // World size for each point
 out vec4 color;
 
 vec3 getRainbowColor(uint value_raw) {
@@ -54,6 +55,13 @@ void main()
     vec4 pw = vec4(position, 1.0);
     vec4 pc = view_matrix * pw;
     gl_Position = projection_matrix * pc;
+
+    // Calculate point size in pixels based on distance
+    float distance_to_camera = length(pc.xyz);
+    if (point_size_world != 0)
+        gl_PointSize = (point_size_world / distance_to_camera) * 1000.0;
+    else
+        gl_PointSize = 1;
     vec3 c = vec3(1.0, 1.0, 1.0);
     if (color_mode == -1)
     {
@@ -107,7 +115,7 @@ def set_uniform_mat4(shader, content, name):
 
 # draw points with color (x, y, z, color)
 class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
-    def __init__(self, size, alpha, color_mode='I'):
+    def __init__(self, size=0, alpha=0.1, color_mode='I'):
         super().__init__()
         self.valid_buff_top = 0
         self.add_buff_loc = 0
@@ -126,8 +134,8 @@ class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
     def addSetting(self, layout):
         label1 = QLabel("Set Size:")
         layout.addWidget(label1)
-        box1 = QSpinBox()
-        box1.setSingleStep(1)
+        box1 = QDoubleSpinBox()
+        box1.setSingleStep(0.01)
         layout.addWidget(box1)
         box1.setValue(self.size)
         box1.valueChanged.connect(self.setSize)
@@ -187,6 +195,7 @@ class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
 
     def setSize(self, size):
         self.size = size
+        self.need_update_setting = True
 
     def clear(self):
         data = np.empty((0), self.data_type)
@@ -221,6 +230,7 @@ class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
         glUniform1i(glGetUniformLocation(self.program, "color_mode"), self.color_mode_int)
         glUniform1f(glGetUniformLocation(self.program, "vmax"), self.vmax)
         glUniform1f(glGetUniformLocation(self.program, "alpha"), self.alpha)
+        glUniform1f(glGetUniformLocation(self.program, "point_size_world"), self.size)
         glUseProgram(0)
         self.need_update_setting = False
 
@@ -271,6 +281,9 @@ class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
         self.updateRenderBuffer()
         self.updateSetting()
         glEnable(GL_BLEND)
+        glEnable(GL_PROGRAM_POINT_SIZE)
+        # glDisable(GL_POINT_SMOOTH)
+
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glUseProgram(self.program)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
@@ -284,7 +297,6 @@ class CloudItem(gl.GLGraphicsItem.GLGraphicsItem):
         project_matrix = np.array(self._GLGraphicsItem__view.projectionMatrix().data(), np.float32).reshape([4, 4]).T
         set_uniform_mat4(self.program, project_matrix, 'projection_matrix')
 
-        glPointSize(self.size)
         glDrawArrays(GL_POINTS, 0, self.valid_buff_top)
 
         # unbind VBO
