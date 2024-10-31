@@ -6,30 +6,13 @@ from pyqtgraph.Qt import QtCore
 from PyQt5.QtWidgets import QWidget, QComboBox, QVBoxLayout, QSizePolicy,\
       QSpacerItem, QMainWindow
 from OpenGL.GL import *
-from PyQt5.QtGui import QKeyEvent, QVector3D
+from PyQt5.QtGui import QKeyEvent, QVector3D, QMatrix4x4
 from PyQt5.QtWidgets import QApplication, QWidget
 import numpy as np
 import signal
 import sys
 from PyQt5.QtWidgets import QLabel, QLineEdit, QDoubleSpinBox, QSpinBox
-
-from math import cos, radians, sin
-
-from pyqtgraph import Vector
-
-def rotation_matrix_from_elev_azim(elev, azim):
-    Ry = np.array([
-        [ np.cos(elev),  0, np.sin(elev)],
-        [ 0, 1,  0],
-        [ -np.sin(elev),0,  np.cos(elev)]
-    ])
-    Rz = np.array([
-        [np.cos(azim), -np.sin(azim), 0],
-        [np.sin(azim), np.cos(azim), 0],
-        [0, 0, 1]
-    ])
-    rotation_matrix = Rz @ Ry 
-    return rotation_matrix
+from q3dviewer.utils import *
 
 
 class SettingWindow(QWidget):
@@ -81,6 +64,8 @@ class ViewWidget(gl.GLViewWidget):
         self.followable_item_name = ['none']
         self.active_keys = set()
         self.setting_window = SettingWindow()
+        self.Twb = rpyxyz2mat(0, 0, 0, -0, -50, 20)
+        self.Tbc = rpyxyz2mat(np.pi/3, 0, 0, 0, 0, 0)
         super(ViewWidget, self).__init__()
 
     def onFollowableSelection(self, index):
@@ -139,25 +124,19 @@ class ViewWidget(gl.GLViewWidget):
         diff = lpos - self.mousePos
         self.mousePos = lpos
         if ev.buttons() == QtCore.Qt.MouseButton.RightButton:
-            self.orbit(-diff.x(), diff.y())
+            dR = rpy2mat(-diff.y() * 0.005, 0, 0)
+            self.Tbc[:3, :3] = self.Tbc[:3, :3] @ dR
+            dR = rpy2mat(0, 0, -diff.x() * 0.005)
+            self.Twb[:3, :3] = self.Twb [:3, :3] @ dR
         elif ev.buttons() == QtCore.Qt.MouseButton.LeftButton:
-            pitch_abs = np.abs(self.opts['elevation'])
-            camera_mode = 'view-upright'
-            if(pitch_abs <= 45.0 or pitch_abs == 90):
-                camera_mode = 'view'
-            self.pan(diff.x(), diff.y(), 0, relative=camera_mode)
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([-diff.x(), diff.y(), 0]) * 0.05
+
+
 
     def keyPressEvent(self, ev: QKeyEvent):
         if ev.key() == QtCore.Qt.Key_M:  # setting meun
             print("Open setting windows")
             self.openSettingWindow()
-        if ev.key() == QtCore.Qt.Key_R:
-            print("Clear viewer")
-            for item in self.named_items.values():
-                try:
-                    item.clear()
-                except:
-                    pass
         if ev.key() == QtCore.Qt.Key_Up or  \
             ev.key() == QtCore.Qt.Key_Down or \
             ev.key() == QtCore.Qt.Key_Left or \
@@ -179,57 +158,42 @@ class ViewWidget(gl.GLViewWidget):
     def updateMovement(self):
         if self.active_keys == {}:
             return
-        rotation_speed = 0.5
-        translation_speed = 0.2
+        rotation_speed = 0.01
+        translation_speed = 1
+        z = self.Twb[2, 3]
+        if z < 10:
+            translation_speed = z * 0.1
         if QtCore.Qt.Key_Up in self.active_keys:
-            self.opts['elevation'] += rotation_speed
+            dR = rpy2mat(rotation_speed, 0, 0)
+            self.Tbc[:3, :3] = self.Tbc[:3, :3] @ dR
         if QtCore.Qt.Key_Down in self.active_keys:
-            self.opts['elevation'] -= rotation_speed
+            dR = rpy2mat(-rotation_speed, 0, 0)
+            self.Tbc[:3, :3] = self.Tbc[:3, :3] @ dR
         if QtCore.Qt.Key_Left in self.active_keys:
-            self.opts['azimuth'] += rotation_speed
+            dR = rpy2mat(0, 0, rotation_speed)
+            self.Twb[:3, :3] = self.Twb [:3, :3]@ dR
         if QtCore.Qt.Key_Right in self.active_keys:
-            self.opts['azimuth'] -= rotation_speed
+            dR = rpy2mat(0, 0, -rotation_speed)
+            self.Twb[:3, :3] = self.Twb[:3, :3] @ dR
         if QtCore.Qt.Key_Z in self.active_keys:
-            elev = radians(self.opts['elevation'])
-            azim = radians(self.opts['azimuth'])
-            R = rotation_matrix_from_elev_azim(-elev, azim)
-            p = R @ np.array([translation_speed, 0, 0])
-            pos = Vector(p[0], p[1], p[2])
-            self.opts['center'] -= pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, +translation_speed])
         if QtCore.Qt.Key_X in self.active_keys:
-            elev = radians(self.opts['elevation'])
-            azim = radians(self.opts['azimuth'])
-            R = rotation_matrix_from_elev_azim(-elev, azim)
-            p = R @ np.array([translation_speed, 0, 0])
-            pos = Vector(p[0], p[1], p[2])
-            self.opts['center'] += pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, -translation_speed])
         if QtCore.Qt.Key_A in self.active_keys:
-            azim = radians(self.opts['azimuth'] + 90)
-            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
-            self.opts['center'] -= pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([-translation_speed, 0, 0])
         if QtCore.Qt.Key_D in self.active_keys:
-            azim = radians(self.opts['azimuth'] + 90)
-            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
-            self.opts['center'] += pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([translation_speed, 0, 0])
         if QtCore.Qt.Key_W in self.active_keys:
-            azim = radians(self.opts['azimuth'])
-            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
-            self.opts['center'] -= pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, translation_speed, 0])
         if QtCore.Qt.Key_S in self.active_keys:
-            azim = radians(self.opts['azimuth'])
-            pos = Vector(cos(azim), sin(azim), 0) * translation_speed
-            self.opts['center'] += pos
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, -translation_speed, 0])
 
     def wheelEvent(self, ev):
         delta = ev.angleDelta().x()
         if delta == 0:
             delta = ev.angleDelta().y()
-        elev = radians(self.opts['elevation'])
-        azim = radians(self.opts['azimuth'])
-        R = rotation_matrix_from_elev_azim(-elev, azim)
-        p = R @ np.array([delta *0.1, 0, 0])
-        pos = Vector(p[0], p[1], p[2])
-        self.opts['center'] -= pos
+        delta = delta * 0.03
+        self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, -delta])
         self.update()
 
     def openSettingWindow(self):
@@ -237,6 +201,9 @@ class ViewWidget(gl.GLViewWidget):
             self.setting_window.raise_()
         else:
             self.setting_window.show()
+
+    def viewMatrix(self):
+        return QMatrix4x4(np.linalg.inv(self.Twb @ self.Tbc).flatten())
 
 
 class Viewer(QMainWindow):
@@ -258,7 +225,6 @@ class Viewer(QMainWindow):
         timer = QtCore.QTimer(self)
         timer.setInterval(20)  # period, in milliseconds
         timer.timeout.connect(self.update)
-        self.viewerWidget.setCameraPosition(distance=40)
         timer.start()
 
     def addItems(self, named_items: dict):

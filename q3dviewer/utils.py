@@ -54,6 +54,26 @@ def make_transform(pose, rotation):
     transform[0:3, 3] = np.transpose(pose)
     return transform
 
+def rpy2mat(roll, pitch, yaw):
+    Rx = np.array([[1, 0, 0],
+                   [0, np.cos(roll), -np.sin(roll)],
+                   [0, np.sin(roll), np.cos(roll)]])
+    Ry = np.array([[np.cos(pitch), 0, np.sin(pitch)],
+                   [0, 1, 0],
+                   [-np.sin(pitch), 0, np.cos(pitch)]])
+    Rz = np.array([[np.cos(yaw), -np.sin(yaw), 0],
+                   [np.sin(yaw), np.cos(yaw), 0],
+                   [0, 0, 1]])
+    return Rx @ Ry @ Rz
+
+def rpyxyz2mat(roll, pitch, yaw, x, y, z):
+    T = np.eye(4)
+    T[:3, :3] = rpy2mat(roll, pitch, yaw)
+    T[0, 3] = x
+    T[1, 3] = y
+    T[2, 3] = z
+    return T
+
 
 class FPSMonitor():
     def __init__(self):
