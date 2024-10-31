@@ -160,9 +160,9 @@ class ViewWidget(gl.GLViewWidget):
             return
         rotation_speed = 0.01
         translation_speed = 1
-        z = self.Twb[2, 3]
-        if z < 10:
-            translation_speed = z * 0.1
+        z = np.abs(self.Twb[2, 3])
+        if z < 20:
+            translation_speed = z * 0.05
         if QtCore.Qt.Key_Up in self.active_keys:
             dR = rpy2mat(rotation_speed, 0, 0)
             self.Tbc[:3, :3] = self.Tbc[:3, :3] @ dR
