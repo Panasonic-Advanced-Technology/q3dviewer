@@ -2,6 +2,13 @@ import numpy as np
 import time
 
 
+
+def m_get_roll(R):
+    r_32 = R[2, 1]
+    r_33 = R[2, 2]
+    roll = np.arctan2(r_32, r_33)
+    return roll
+
 def matrix_to_quaternion(matrix):
     trace = matrix[0, 0] + matrix[1, 1] + matrix[2, 2]
     if trace > 0:

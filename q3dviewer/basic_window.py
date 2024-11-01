@@ -129,9 +129,18 @@ class ViewWidget(gl.GLViewWidget):
             dR = rpy2mat(0, 0, -diff.x() * 0.005)
             self.Twb[:3, :3] = self.Twb [:3, :3] @ dR
         elif ev.buttons() == QtCore.Qt.MouseButton.LeftButton:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([-diff.x(), diff.y(), 0]) * 0.05
-
-
+            width = self.deviceWidth()
+            project_matrix = np.array(self.projectionMatrix().data(), np.float32).reshape([4, 4]).T
+            focal = project_matrix[0, 0] * width / 2
+            z = np.abs(self.Twb[2, 3])
+            roll = np.abs(m_get_roll(self.Tbc))
+            print(roll)
+            if (roll < 1.3):
+                dtrans = np.array([-diff.x() * z / focal, diff.y()* z / focal, 0])
+                self.Twb[:3, 3] += self.Twb[:3, :3] @ dtrans
+            else:
+                dtrans = np.array([-diff.x() / focal * 50, 0, diff.y() / focal * 50])
+                self.Twb[:3, 3] += self.Twb[:3, :3] @ dtrans
 
     def keyPressEvent(self, ev: QKeyEvent):
         if ev.key() == QtCore.Qt.Key_M:  # setting meun
@@ -159,10 +168,10 @@ class ViewWidget(gl.GLViewWidget):
         if self.active_keys == {}:
             return
         rotation_speed = 0.01
-        translation_speed = 1
+        trans_speed = 1
         z = np.abs(self.Twb[2, 3])
         if z < 20:
-            translation_speed = z * 0.05
+            trans_speed = z * 0.05
         if QtCore.Qt.Key_Up in self.active_keys:
             dR = rpy2mat(rotation_speed, 0, 0)
             self.Tbc[:3, :3] = self.Tbc[:3, :3] @ dR
@@ -176,17 +185,17 @@ class ViewWidget(gl.GLViewWidget):
             dR = rpy2mat(0, 0, -rotation_speed)
             self.Twb[:3, :3] = self.Twb[:3, :3] @ dR
         if QtCore.Qt.Key_Z in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, +translation_speed])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, +trans_speed])
         if QtCore.Qt.Key_X in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, -translation_speed])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ self.Tbc[:3, :3] @ np.array([0, 0, -trans_speed])
         if QtCore.Qt.Key_A in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([-translation_speed, 0, 0])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([-trans_speed, 0, 0])
         if QtCore.Qt.Key_D in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([translation_speed, 0, 0])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([trans_speed, 0, 0])
         if QtCore.Qt.Key_W in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, translation_speed, 0])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, trans_speed, 0])
         if QtCore.Qt.Key_S in self.active_keys:
-            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, -translation_speed, 0])
+            self.Twb[:3, 3] += self.Twb[:3, :3] @ np.array([0, -trans_speed, 0])
 
     def wheelEvent(self, ev):
         delta = ev.angleDelta().x()
